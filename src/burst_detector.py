@@ -45,7 +45,7 @@ class burst_detector(gr.basic_block):
 		self._burst = False
 
 		self.block_size = 256
-		
+
 		self.hysteresis_timeout = 3 #int(math.ceil(768 / self.block_size))
 		self.hysteresis_count = 0
 
@@ -61,7 +61,7 @@ class burst_detector(gr.basic_block):
 
 	def general_work(self, input_items, output_items):
 		input_item = input_items[0]
-		
+
 		samples_to_consume = min(len(input_items[0]), len(output_items[0]))
 		block_count = int(math.floor(samples_to_consume / self.block_size))
 		samples_to_consume = block_count * self.block_size
@@ -82,17 +82,17 @@ class burst_detector(gr.basic_block):
 			block_spread = block_max / block_avg
 			#graph = '*' * int(round(block_spread))
 			#print('%.1f %s' % (block_spread, graph))
-			
+
 			if block_spread >= 10:
 				self.hysteresis_count = self.hysteresis_timeout
 			elif block_spread < 5:
 				self.hysteresis_count -= 1
-				
+
 			#if block_max >= self.threshold_rise:
 			#	self.hysteresis_count = self.hysteresis_timeout
 			#elif block_max <= self.threshold_fall:
 			#	self.hysteresis_count -= 1
-			
+
 			if self.hysteresis_count > 0:
 				if self._burst == False:
 					#print('T: %d, %d' % (nitems_written + index_start - self.block_size, nitems_written))

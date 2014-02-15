@@ -23,8 +23,13 @@
 
 from gnuradio import gr
 
-import math
+from matplotlib import pyplot
+
+import scipy.stats
+import scipy.signal
 import numpy
+
+import math
 
 def packet_format(l):
 	if 'X' in l:
@@ -52,31 +57,18 @@ class Packetizer(gr.sync_block):
 
 	def work(self, input_items, output_items):
 		nitems = len(input_items[0])
-		
+
 		if self._data is None:
 			self._data = input_items[0].copy()
 		else:
 			self._data = numpy.concatenate((self._data, input_items[0]))
-			
+
 		return len(input_items[0])
-
-
-
-
 
 def blank_array_range(data, center, deviation):
 	low_n = max(center - deviation, 0)
 	high_n = min(center + deviation, len(data))
 	data[low_n:high_n] = 0
-
-
-
-from matplotlib import pyplot
-import scipy.stats
-import scipy.signal
-
-
-
 
 def packet_classify(data, sampling_rate):
 	# From "Automatic Modulation Recognition of Communication Signals"
@@ -112,7 +104,7 @@ def packet_classify(data, sampling_rate):
 
 	mute_offset_hz = 2e3
 	mute_offset_n = int(math.ceil(float(mute_offset_hz) / sampling_rate * len(spectrum_mag)))
-	
+
 	peak1_n = numpy.argmax(spectrum_mag)
 	peak1_hz = arg_hz(peak1_n)
 	peak1_mag = spectrum_mag[peak1_n]
@@ -245,7 +237,7 @@ def packet_classify(data, sampling_rate):
 	# fm_demod = numpy.angle(data[1:] * numpy.conjugate(data[:-1]))
 	# x = numpy.arange(len(fm_demod)) / sampling_rate
 	# pyplot.plot(x, fm_demod)
-	
+
 	# pyplot.subplot(413)
 	# x = numpy.fft.fftshift(numpy.fft.fftfreq(len(data))) * sampling_rate
 	# mag = numpy.absolute(numpy.fft.fftshift(numpy.fft.fft(data)))

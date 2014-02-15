@@ -21,12 +21,13 @@
 # Boston, MA 02110-1301, USA.
 #
 
-import sys
 from collections import defaultdict
 
 from matplotlib import pyplot
 
 from iso8601 import iso8601
+
+import sys
 
 decoded_data = []
 for line in sys.stdin:

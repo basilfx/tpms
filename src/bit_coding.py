@@ -51,7 +51,7 @@
 # 		else:
 # 			result.append('0')
 # 	return result
-	
+
 # def manchester_decode(a):
 # 	a = copy_truncated(a, 2)
 # 	a = a.reshape((-1, 2))

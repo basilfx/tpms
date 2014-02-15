@@ -160,7 +160,7 @@ class top_block(gr.top_block):
 		#self.connect((self.blocks_file_source_0_0, 0), (self.blocks_throttle_0, 0))
 		#self.connect((self.blocks_file_source_0_0, 0), (self.freq_xlating_fir_filter_xxx_0, 0))
 		self.connect((self.blocks_file_source_0_0, 0), (self.blocks_complex_to_mag_0, 0))
-		
+
 		self.packetizer = Packetizer(82)
 		self.connect((self.digital_correlate_access_code_bb_0, 0), (self.packetizer, 0))
 
@@ -269,4 +269,3 @@ if __name__ == '__main__':
 	tb = top_block(sys.argv[1])
 	#tb.Run(True)
 	tb.run()
-	
