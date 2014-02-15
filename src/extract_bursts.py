@@ -46,6 +46,8 @@ class top_block(gr.top_block):
         source_filename, source_extension = os.path.splitext(source_filename)
         target_signal, carrier_freq, sampling_rate, start_date, start_time, capture_device = source_filename.split('_')
 
+        wav_file = (source_extension.upper() == ".WAV")
+
         if sampling_rate[-1].upper() == 'M':
             sampling_rate = float(sampling_rate[:-1]) * 1e6
         else:
@@ -67,14 +69,25 @@ class top_block(gr.top_block):
         ##################################################
         # Blocks
         ##################################################
-        self.blocks_file_source_0 = blocks.file_source(gr.sizeof_gr_complex*1, source_path, False)
+        if wav_file:
+            self.blocks_wavfile_source_0 = blocks.wavfile_source(source_path, False)
+            self.blocks_float_to_complex_0 = blocks.float_to_complex(1)
+        else:
+            self.blocks_file_source_0 = blocks.file_source(gr.sizeof_gr_complex*1, source_path, False)
+
         self.burst_detector = burst_detector()
         self.blocks_tagged_file_sink_0 = blocks.tagged_file_sink(gr.sizeof_gr_complex*1, samp_rate)
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.blocks_file_source_0, 0), (self.burst_detector, 0))
+        if wav_file:
+            self.connect((self.blocks_wavfile_source_0, 0), (self.blocks_float_to_complex_0, 0))
+            self.connect((self.blocks_wavfile_source_0, 1), (self.blocks_float_to_complex_0, 1))
+            self.connect((self.blocks_float_to_complex_0, 0), (self.burst_detector, 0))
+        else:
+            self.connect((self.blocks_file_source_0, 0), (self.burst_detector, 0))
+
         self.connect((self.burst_detector, 0), (self.blocks_tagged_file_sink_0, 0))
 
 if __name__ == '__main__':
