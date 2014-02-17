@@ -239,5 +239,5 @@ if __name__ == '__main__':
 	# correlator = numpy.fromfile('out_correlator.u8', dtype=numpy.uint8)
 	# x_correlator = numpy.arange(len(correlator)) #* tb.samples_per_symbol
 	# plot(x_correlator, correlator)
-	
+
 	# show()

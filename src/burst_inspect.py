@@ -144,7 +144,7 @@ class WaveformItem(QtGui.QGraphicsPathItem):
 		if self.data is not None:
 			sampling_interval = self.data.sampling_interval
 			path.moveTo(0, 0)
-			for i in range(self.data.sample_count):
+			for i in xrange(self.data.sample_count):
 				x = i * sampling_interval
 				y = self.data.samples[i]
 				path.lineTo(x, y)
@@ -181,7 +181,7 @@ class HistogramItem(QtGui.QGraphicsPathItem):
 		if self.data is not None:
 			histogram = numpy.histogram(self.data, bins=self.bin_count)
 			path.moveTo(0, histogram[1][0])
-			for i in range(len(histogram[1]) - 1):
+			for i in xrange(len(histogram[1]) - 1):
 				x = histogram[0][i]
 				y = (histogram[1][i] + histogram[1][i+1]) / 2.0
 				path.lineTo(x, y)
@@ -315,7 +315,7 @@ class AMWaveformView(WaveformView):
 			new_size = self.size()
 			self.scale(float(new_size.width()) / self.data.duration, float(new_size.height()) / -self.data.abs_max)
 			self.translate(0.0, new_size.height())
-	
+
 class AMWidget(QtGui.QWidget):
 	range_changed = QtCore.Signal(float, float)
 
@@ -426,11 +426,11 @@ class EyeView(QtGui.QGraphicsView):
 		pen_1 = QtGui.QPen(color_1)
 		color_2 = QtGui.QColor(255, 255, 0)
 		pen_2 = QtGui.QPen(color_2)
-		
+
 		self.path_1 = WaveformItem()
 		self.path_1.setPen(pen_1)
 		self.scene.addItem(self.path_1)
-		
+
 		self.path_2 = WaveformItem()
 		self.path_2.setPen(pen_2)
 		self.scene.addItem(self.path_2)
@@ -549,7 +549,7 @@ class SlicerWidget(QtGui.QWidget):
 
 # def classify_burst(data):
 #   return packet_classify(data.samples, data.sampling_rate)
-	
+
 # def estimate_fsk_carrier(data):
 #   spectrum = numpy.fft.fftshift(numpy.fft.fft(data.samples))
 #   mag_spectrum = numpy.log(numpy.absolute(spectrum))
@@ -610,7 +610,7 @@ class SpectrumView(QtGui.QWidget):
 			#painter.setPen(QtCore.Qt.green)
 			path = QtGui.QPainterPath()
 			path.moveTo(0, 0)
-			for x in range(len(self._mag_spectrum)):
+			for x in xrange(len(self._mag_spectrum)):
 				y = self._mag_spectrum[x]
 				path.lineTo(x, y)
 			path.lineTo(len(self._mag_spectrum), 0)
@@ -623,7 +623,7 @@ class SpectrumView(QtGui.QWidget):
 			brush = QtGui.QBrush(QtCore.Qt.red)
 			painter.fillPath(path, brush)
 			painter.restore()
-			
+
 			painter.save()
 			painter.translate(0, self.height())
 			scale_y = float(self.height()) / self._burst_max
@@ -631,7 +631,7 @@ class SpectrumView(QtGui.QWidget):
 			brush = QtGui.QBrush(QtCore.Qt.green)
 			painter.fillPath(path, brush)
 			painter.restore()
-			
+
 		painter.end()
 
 	@property
@@ -692,7 +692,7 @@ class Slider(QtGui.QWidget):
 
 		self.label = QtGui.QLabel(self)
 		self.label.setText(name)
-		
+
 		self.slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
 		self.slider.setRange(low_int, high_int)
 		self.slider.valueChanged[int].connect(self._value_changed)
@@ -829,7 +829,7 @@ class Burst(QtCore.QObject):
 	def modulation(self, new_value):
 		self._modulation = new_value
 		self.modulation_changed.emit(self._modulation)
-	
+
 	@property
 	def raw(self):
 		return self._raw
@@ -1221,9 +1221,11 @@ class Browser(QtGui.QWidget):
 		top.run()
 		symbol_data = numpy_sink.data
 
+		numpy.max(symbol_data)
+
 		# TODO: Adjust sampling rate
 		bits = []
-		for i in range(len(symbol_data)):
+		for i in xrange(len(symbol_data)):
 			if symbol_data[i] >= 0:
 				symbol_data[i] = 1
 				bits.append('1')
