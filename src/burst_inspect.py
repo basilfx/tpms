@@ -673,12 +673,12 @@ def get_cfile_list(path):
 	filenames = sorted(filenames, key=lambda s: int(s.split('_')[1]))
 	return filenames
 
-def translate_burst(burst, new_frequency):
+def translate_burst(burst, new_frequency, start, stop):
 	if burst is None:
 		return None
 	mix = numpy.arange(burst.sample_count, dtype=numpy.float32) * 2.0j * numpy.pi * new_frequency / burst.sampling_rate
 	mix = numpy.exp(mix) * burst.samples
-	return TimeData(mix, burst.sampling_rate)
+	return TimeData(mix[start:stop], burst.sampling_rate)
 
 class Slider(QtGui.QWidget):
 	value_changed = QtCore.Signal(float)
@@ -710,6 +710,30 @@ class Slider(QtGui.QWidget):
 		self.value = default_value
 
 	@property
+	def maximum(self):
+		return self._maximum
+
+	@maximum.setter
+	def maximum(self, new_value):
+		pass
+
+	@property
+	def minimum(self):
+		return self._minimum
+
+	@minimum.setter
+	def minimum(self, new_value):
+		pass
+
+	@property
+	def increment(self):
+		return self._increment
+
+	@increment.setter
+	def increment(self, new_value):
+		pass
+
+	@property
 	def value(self):
 		return self.slider.sliderPosition() * self._increment
 
@@ -722,6 +746,55 @@ class Slider(QtGui.QWidget):
 	def _value_changed(self, value):
 		self.text.setText(str(self.value))
 		self.value_changed.emit(self.value)
+
+class RadioOptions(QtGui.QWidget):
+	value_changed = QtCore.Signal(int)
+
+	def __init__(self, name, options, default=None, parent=None):
+		super(RadioOptions, self).__init__(parent=parent)
+
+		self.label = QtGui.QLabel(self)
+		self.label.setText(name)
+
+		self.group = QtGui.QButtonGroup(self)
+
+		self.layout = QtGui.QHBoxLayout()
+		self.layout.addWidget(self.label)
+
+		def make_emit(value):
+			def _toggle(checked):
+				if checked:
+					self._value = value
+					self.value_changed.emit(value)
+			return _toggle
+
+		self._value = None
+		self._options = {}
+
+		for value, title in options:
+			option = QtGui.QRadioButton(title)
+			option.toggled.connect(make_emit(value))
+
+			self.layout.addWidget(option)
+			self._options[value] = option
+
+		self.layout.addStretch(1)
+		self.setLayout(self.layout)
+
+		if default is not None:
+			self.value = default
+
+	@property
+	def value(self):
+		return self._value
+
+	@value.setter
+	def value(self, new_value):
+		try:
+			self._options[new_value].setChecked(True)
+			self._value = new_value
+		except KeyError:
+			raise ValueError("Option with value %d does not exists" % new_value)
 
 class QFileListWidget(QtGui.QListWidget):
 	file_changed = QtCore.Signal(str)
@@ -793,6 +866,8 @@ class Burst(QtCore.QObject):
 	raw_changed = QtCore.Signal(object)
 	translated_changed = QtCore.Signal(object)
 	filtered_changed = QtCore.Signal(object)
+	start_changed = QtCore.Signal(object)
+	stop_changed = QtCore.Signal(object)
 
 	def __init__(self):
 		super(Burst, self).__init__()
@@ -802,6 +877,8 @@ class Burst(QtCore.QObject):
 		self._raw = None
 		self._translated = None
 		self._filtered = None
+		self._start = None
+		self._stop = None
 
 	@property
 	def symbol_rate(self):
@@ -811,7 +888,7 @@ class Burst(QtCore.QObject):
 	def symbol_rate(self, new_value):
 		self._symbol_rate = new_value
 		self.symbol_rate_changed.emit(self._symbol_rate)
-	
+
 	@property
 	def center_frequency(self):
 		return self._center_frequency
@@ -820,7 +897,7 @@ class Burst(QtCore.QObject):
 	def center_frequency(self, new_value):
 		self._center_frequency = new_value
 		self.center_frequency_changed.emit(self._center_frequency)
-	
+
 	@property
 	def modulation(self):
 		return self._modulation
@@ -856,6 +933,24 @@ class Burst(QtCore.QObject):
 	def filtered(self, new_value):
 		self._filtered = new_value
 		self.filtered_changed.emit(self._filtered)
+
+	@property
+	def start(self):
+		return self._start
+
+	@start.setter
+	def start(self, new_value):
+		self._start = new_value
+		self.start_changed.emit(self._start)
+
+	@property
+	def stop(self):
+		return self._stop
+
+	@stop.setter
+	def stop(self, new_value):
+		self._stop = new_value
+		self.stop_changed.emit(self._stop)
 
 class ASKWidget(QtGui.QWidget):
 	def __init__(self, burst, parent=None):
@@ -954,8 +1049,8 @@ class FSKWidget(QtGui.QWidget):
 
 		self.views_layout = QtGui.QGridLayout()
 		self.views_layout.setContentsMargins(0, 0, 0, 0)
-		self.views_layout.addWidget(self.deviation_slider, 0, 0)
-		self.views_layout.addWidget(self.eye_view, 1, 0)
+		self.views_layout.addWidget(self.deviation_slider, 1, 0)
+		self.views_layout.addWidget(self.eye_view, 2, 0)
 		self.setLayout(self.views_layout)
 
 	def translated_changed(self, translated):
@@ -978,6 +1073,7 @@ class FSKWidget(QtGui.QWidget):
 			samples_per_symbol = translated.sampling_rate / self.burst.symbol_rate
 			tap_count = int(math.floor(samples_per_symbol))
 			x = numpy.arange(tap_count, dtype=numpy.float32) * 2.0j * numpy.pi / translated.sampling_rate
+
 			self._taps_n = numpy.exp(x * -self.modulation.deviation)
 			self._taps_p = numpy.exp(x *  self.modulation.deviation)
 		else:
@@ -990,6 +1086,7 @@ class FSKWidget(QtGui.QWidget):
 			filtered_data_1 = TimeData(numpy.complex64(scipy.signal.lfilter(self._taps_n, 1, translated.samples)), translated.sampling_rate)
 			filtered_data_2 = TimeData(numpy.complex64(scipy.signal.lfilter(self._taps_p, 1, translated.samples)), translated.sampling_rate)
 			self.eye_view.data = (filtered_data_1.abs, filtered_data_2.abs)
+
 			self.burst.filtered = TimeData(filtered_data_2.abs.samples - filtered_data_1.abs.samples, filtered_data_1.sampling_rate)
 		else:
 			self.eye_view.data = (None, None)
@@ -1040,11 +1137,19 @@ class Browser(QtGui.QWidget):
 		self.modulation_tabs.addTab(self.tab_fsk, "FSK")
 		self.modulation_tabs.setCurrentWidget(self.tab_fsk)
 
+		self.burst_start_slider = Slider("Burst Start", 0, 1e3, 1, 0.0, self)
+		self.burst_start_slider.value_changed[float].connect(self.start_slider_changed)
+		self.burst_stop_slider = Slider("Burst Stop", 0, 1e3, 1, 0.0, self)
+		self.burst_stop_slider.value_changed[float].connect(self.stop_slider_changed)
+
 		self.translation_frequency_slider = Slider("F Shift", -200e3, 200e3, 1e3, self.burst.center_frequency, self)
 		self.translation_frequency_slider.value_changed[float].connect(self.translation_frequency_slider_changed)
 
 		self.symbol_rate_slider = Slider("Symbol Rate", 5e3, 25e3, 10, self.burst.symbol_rate, self)
 		self.symbol_rate_slider.value_changed[float].connect(self.symbol_rate_slider_changed)
+
+		self.levels = RadioOptions("Levels", [(2, "2"), (4, "4")], 2, self)
+		self.levels.value_changed[int].connect(lambda x: x)
 
 		self.slicer_view = SlicerWidget(self)
 		self.sliced_view = SlicerWidget(self)
@@ -1057,12 +1162,15 @@ class Browser(QtGui.QWidget):
 		self.views_layout.setContentsMargins(0, 0, 0, 0)
 		self.views_layout.addWidget(self.am_view, 0, 0)
 		self.views_layout.addWidget(self.fm_view, 1, 0)
-		self.views_layout.addWidget(self.spectrum_view, 2, 0)
-		self.views_layout.addWidget(self.translation_frequency_slider, 3, 0)
-		self.views_layout.addWidget(self.modulation_tabs, 4, 0)
-		self.views_layout.addWidget(self.symbol_rate_slider, 5, 0)
-		self.views_layout.addWidget(self.slicer_view, 6, 0)
-		self.views_layout.addWidget(self.sliced_view, 7, 0)
+		self.views_layout.addWidget(self.burst_start_slider, 2, 0)
+		self.views_layout.addWidget(self.burst_stop_slider, 3, 0)
+		self.views_layout.addWidget(self.spectrum_view, 4, 0)
+		self.views_layout.addWidget(self.translation_frequency_slider, 5, 0)
+		self.views_layout.addWidget(self.modulation_tabs, 6, 0)
+		self.views_layout.addWidget(self.symbol_rate_slider, 7, 0)
+		self.views_layout.addWidget(self.levels, 8, 0)
+		self.views_layout.addWidget(self.slicer_view, 9, 0)
+		self.views_layout.addWidget(self.sliced_view, 10, 0)
 		self.views_layout.setRowStretch(0, 0)
 		self.views_layout.setRowStretch(1, 0)
 		self.views_layout.setRowStretch(2, 0)
@@ -1071,7 +1179,10 @@ class Browser(QtGui.QWidget):
 		self.views_layout.setRowStretch(5, 0)
 		self.views_layout.setRowStretch(6, 0)
 		self.views_layout.setRowStretch(7, 0)
-		self.views_layout.setRowStretch(8, 1)
+		self.views_layout.setRowStretch(8, 0)
+		self.views_layout.setRowStretch(9, 0)
+		self.views_layout.setRowStretch(10, 0)
+		self.views_layout.setRowStretch(11, 1)
 		self.views_widget.setLayout(self.views_layout)
 
 		self.top_layout = QtGui.QVBoxLayout()
@@ -1114,7 +1225,7 @@ class Browser(QtGui.QWidget):
 
 	def translation_frequency_changing(self, frequency_shift):
 		new_frequency = self.shift_translation_frequency(frequency_shift)
-		self.burst.translated = translate_burst(self.burst.raw, new_frequency)
+		self.burst.translated = translate_burst(self.burst.raw, new_frequency, self.burst.start, self.burst.stop)
 		self.spectrum_view.burst = self.burst.translated
 
 	def translation_frequency_changed(self, frequency_shift):
@@ -1124,6 +1235,14 @@ class Browser(QtGui.QWidget):
 
 	def translation_frequency_slider_changed(self, translation_frequency):
 		self.burst.center_frequency = translation_frequency
+		self._update_translation(self.burst.raw)
+
+	def start_slider_changed(self, start_value):
+		self.burst.start = start_value
+		self._update_translation(self.burst.raw)
+
+	def stop_slider_changed(self, stop_value):
+		self.burst.stop = stop_value
 		self._update_translation(self.burst.raw)
 
 	def raw_changed(self, data):
@@ -1198,7 +1317,7 @@ class Browser(QtGui.QWidget):
 			os.remove(matched_file_path)
 
 	def _update_translation(self, raw_data):
-		self.burst.translated = translate_burst(raw_data, self.burst.center_frequency)
+		self.burst.translated = translate_burst(raw_data, self.burst.center_frequency, self.burst.start, self.burst.stop)
 		self.spectrum_view.burst = self.burst.translated
 
 	def _update_sliced(self, filtered_symbols):
