@@ -271,9 +271,43 @@ class GenericWaveformView(WaveformView):
 
 	def _scale_changed(self):
 		if self.data is not None:
-			new_size = self.size()
 			self.scale(float(self.width()) / self.data.duration, self.height() / -(self.data.max - self.data.min))
 			self.translate(0.0, self.height())
+
+class StartStopWaveformView(WaveformView):
+	def __init__(self, parent=None):
+		super(StartStopWaveformView, self).__init__(parent)
+
+		color_data = QtGui.QColor(255, 0, 0)
+		pen_data = QtGui.QPen(color_data)
+
+		self.start_line = QtGui.QGraphicsLineItem()
+		self.start_line.setPen(pen_data)
+		self.scene.addItem(self.start_line)
+
+		self.stop_line = QtGui.QGraphicsLineItem()
+		self.stop_line.setPen(pen_data)
+		self.scene.addItem(self.stop_line)
+
+	@property
+	def start(self):
+		return self.start_line.x() / self.data.sampling_interval
+
+	@start.setter
+	def start(self, new_value):
+		rect = self.sceneRect()
+		trans_value = new_value * self.data.sampling_interval
+		self.start_line.setLine(trans_value, rect.top(), trans_value, rect.height())
+
+	@property
+	def stop(self):
+		return self.stop_line.x() / self.data.sampling_interval
+
+	@stop.setter
+	def stop(self, new_value):
+		rect = self.sceneRect()
+		trans_value = new_value * self.data.sampling_interval
+		self.stop_line.setLine(trans_value, rect.top(), trans_value, rect.height())
 
 class WaveWidget(QtGui.QWidget):
 	range_changed = QtCore.Signal(float, float)
@@ -304,7 +338,7 @@ class WaveWidget(QtGui.QWidget):
 		super(WaveWidget, self).resizeEvent(event)
 		self.waveform_view.resize(event.size())
 
-class AMWaveformView(WaveformView):
+class AMWaveformView(StartStopWaveformView):
 	def _data_changed(self):
 		if self.data is not None:
 			self.setSceneRect(0, 0, self.data.duration, self.data.abs_max)
@@ -322,21 +356,50 @@ class AMWidget(QtGui.QWidget):
 	def __init__(self, parent=None):
 		super(AMWidget, self).__init__(parent=parent)
 
+		self._start = None
+		self._stop = None
 		self._data = None
 
 		self.waveform_view = AMWaveformView(self)
 
-	def get_data(self):
+	@property
+	def data(self):
 		return self._data
 
-	def set_data(self, data):
+	@data.setter
+	def data(self, data):
 		self._data = data
 		if self.data is not None:
 			self.waveform_view.data = TimeData(self.data.abs.samples, self.data.sampling_rate)
 			#self.histogram_path.data = data
 		else:
 			self.waveform_view.data = None
-	data = property(get_data, set_data)
+
+	@property
+	def start(self):
+		return self._start
+
+	@start.setter
+	def start(self, new_value):
+		self._start = new_value
+
+		if self.data is not None:
+			self.waveform_view.start = new_value
+		else:
+			self.waveform_view.start = None
+
+	@property
+	def stop(self):
+		return self._stop
+
+	@stop.setter
+	def stop(self, new_value):
+		self._stop = new_value
+
+		if self.data is not None:
+			self.waveform_view.stop = new_value
+		else:
+			self.waveform_view.stop = None
 
 	def sizeHint(self):
 		return QtCore.QSize(50, 50)
@@ -345,7 +408,7 @@ class AMWidget(QtGui.QWidget):
 		super(AMWidget, self).resizeEvent(event)
 		self.waveform_view.resize(event.size())
 
-class FMWaveformView(WaveformView):
+class FMWaveformView(StartStopWaveformView):
 	def _data_changed(self):
 		if self.data is not None:
 			self.setSceneRect(0, -numpy.pi, self.data.duration, numpy.pi * 2.0)
@@ -361,14 +424,18 @@ class FMWidget(QtGui.QWidget):
 	def __init__(self, parent=None):
 		super(FMWidget, self).__init__(parent=parent)
 
+		self._start = None
+		self._stop = None
 		self._data = None
 
 		self.waveform_view = FMWaveformView(self)
 
-	def get_data(self):
+	@property
+	def data(self):
 		return self._data
 
-	def set_data(self, data):
+	@data.setter
+	def data(self, data):
 		self._data = data
 		if self.data is not None:
 			values = numpy.angle(self.data.samples[1:] * numpy.conjugate(self.data.samples[:-1]))
@@ -393,7 +460,32 @@ class FMWidget(QtGui.QWidget):
 			#self.histogram_path.data = data
 		else:
 			self.waveform_view.data = None
-	data = property(get_data, set_data)
+
+	@property
+	def start(self):
+		return self._start
+
+	@start.setter
+	def start(self, new_value):
+		self._start = new_value
+
+		if self.data is not None:
+			self.waveform_view.start = new_value
+		else:
+			self.waveform_view.start = None
+
+	@property
+	def stop(self):
+		return self._stop
+
+	@stop.setter
+	def stop(self, new_value):
+		self._stop = new_value
+
+		if self.data is not None:
+			self.waveform_view.stop = new_value
+		else:
+			self.waveform_view.stop = None
 
 	def sizeHint(self):
 		return QtCore.QSize(50, 50)
@@ -676,6 +768,10 @@ def get_cfile_list(path):
 def translate_burst(burst, new_frequency, start, stop):
 	if burst is None:
 		return None
+
+	if start is not None and stop is not None and start > stop:
+		return None
+
 	mix = numpy.arange(burst.sample_count, dtype=numpy.float32) * 2.0j * numpy.pi * new_frequency / burst.sampling_rate
 	mix = numpy.exp(mix) * burst.samples
 	return TimeData(mix[start:stop], burst.sampling_rate)
@@ -690,11 +786,12 @@ class Slider(QtGui.QWidget):
 		self.label.setText(name)
 
 		self.slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-		self.slider.valueChanged[int].connect(self._value_changed)
 
 		self.increment = increment
 		self.minimum = low_value
 		self.maximum = high_value
+
+		self.slider.valueChanged[int].connect(self._value_changed)
 
 		self.text = QtGui.QLabel(self)
 		self.text.setText(str(self.value))
@@ -1240,18 +1337,33 @@ class Browser(QtGui.QWidget):
 
 	def start_slider_changed(self, start_value):
 		self.burst.start = start_value
+
+		self.am_view.start = start_value
+		self.fm_view.start = start_value
+
 		self._update_translation(self.burst.raw)
 
 	def stop_slider_changed(self, stop_value):
 		self.burst.stop = stop_value
+
+		self.am_view.stop = stop_value
+		self.fm_view.stop = stop_value
+
 		self._update_translation(self.burst.raw)
 
 	def raw_changed(self, data):
 		self.am_view.data = self.burst.raw
-		self.fm_view.data = self.burst.raw
 
 		self.burst_start_slider.maximum = self.burst.raw.sample_count
 		self.burst_stop_slider.maximum = self.burst.raw.sample_count
+
+		self.am_view.data = self.burst.raw
+		self.am_view.start = self.burst_start_slider.value
+		self.am_view.stop = self.burst_stop_slider.value
+
+		self.fm_view.data = self.burst.raw
+		self.fm_view.start = self.burst_start_slider.value
+		self.fm_view.stop = self.burst_stop_slider.value
 
 		self._update_translation(data)
 
