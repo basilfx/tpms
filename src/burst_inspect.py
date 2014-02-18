@@ -686,16 +686,15 @@ class Slider(QtGui.QWidget):
 	def __init__(self, name, low_value, high_value, increment, default_value, parent=None):
 		super(Slider, self).__init__(parent=parent)
 
-		self._increment = increment
-		low_int = int(math.floor(float(low_value) / increment))
-		high_int = int(math.ceil(float(high_value) / increment))
-
 		self.label = QtGui.QLabel(self)
 		self.label.setText(name)
 
 		self.slider = QtGui.QSlider(QtCore.Qt.Horizontal, self)
-		self.slider.setRange(low_int, high_int)
 		self.slider.valueChanged[int].connect(self._value_changed)
+
+		self.increment = increment
+		self.minimum = low_value
+		self.maximum = high_value
 
 		self.text = QtGui.QLabel(self)
 		self.text.setText(str(self.value))
@@ -715,7 +714,8 @@ class Slider(QtGui.QWidget):
 
 	@maximum.setter
 	def maximum(self, new_value):
-		pass
+		self._maximum = new_value
+		self.slider.setMaximum(int(math.ceil(float(new_value) / self._increment)))
 
 	@property
 	def minimum(self):
@@ -723,7 +723,8 @@ class Slider(QtGui.QWidget):
 
 	@minimum.setter
 	def minimum(self, new_value):
-		pass
+		self._minimum = new_value
+		self.slider.setMinimum(int(math.ceil(float(new_value) / self._increment)))
 
 	@property
 	def increment(self):
@@ -731,7 +732,7 @@ class Slider(QtGui.QWidget):
 
 	@increment.setter
 	def increment(self, new_value):
-		pass
+		self._increment = new_value
 
 	@property
 	def value(self):
@@ -1248,6 +1249,10 @@ class Browser(QtGui.QWidget):
 	def raw_changed(self, data):
 		self.am_view.data = self.burst.raw
 		self.fm_view.data = self.burst.raw
+
+		self.burst_start_slider.maximum = self.burst.raw.sample_count
+		self.burst_stop_slider.maximum = self.burst.raw.sample_count
+
 		self._update_translation(data)
 
 	def filtered_changed(self, data):
