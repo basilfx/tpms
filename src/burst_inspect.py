@@ -295,9 +295,14 @@ class StartStopWaveformView(WaveformView):
 
 	@start.setter
 	def start(self, new_value):
-		rect = self.sceneRect()
-		trans_value = new_value * self.data.sampling_interval
-		self.start_line.setLine(trans_value, rect.top(), trans_value, rect.height())
+		if new_value is not None:
+			rect = self.sceneRect()
+			trans_value = new_value * self.data.sampling_interval
+
+			self.start_line.setVisible(True)
+			self.start_line.setLine(trans_value, rect.top(), trans_value, rect.height())
+		else:
+			self.start_line.setVisible(False)
 
 	@property
 	def stop(self):
@@ -305,13 +310,16 @@ class StartStopWaveformView(WaveformView):
 
 	@stop.setter
 	def stop(self, new_value):
-		rect = self.sceneRect()
-		trans_value = new_value * self.data.sampling_interval
-		self.stop_line.setLine(trans_value, rect.top(), trans_value, rect.height())
+		if new_value is not None:
+			rect = self.sceneRect()
+			trans_value = new_value * self.data.sampling_interval
+
+			self.stop_line.setVisible(True)
+			self.stop_line.setLine(trans_value, rect.top(), trans_value, rect.height())
+		else:
+			self.stop_line.setVisible(False)
 
 class WaveWidget(QtGui.QWidget):
-	range_changed = QtCore.Signal(float, float)
-
 	def __init__(self, parent=None):
 		super(WaveWidget, self).__init__(parent=parent)
 
@@ -319,17 +327,18 @@ class WaveWidget(QtGui.QWidget):
 
 		self.waveform_view = GenericWaveformView(self)
 
-	def get_data(self):
+	@property
+	def data(self):
 		return self._data
 
-	def set_data(self, data):
+	@data.setter
+	def data(self, data):
 		self._data = data
 		if self.data is not None:
 			self.waveform_view.data = self.data
 			#self.histogram_path.data = data
 		else:
 			self.waveform_view.data = None
-	data = property(get_data, set_data)
 
 	def sizeHint(self):
 		return QtCore.QSize(50, 50)
@@ -351,8 +360,6 @@ class AMWaveformView(StartStopWaveformView):
 			self.translate(0.0, new_size.height())
 
 class AMWidget(QtGui.QWidget):
-	range_changed = QtCore.Signal(float, float)
-
 	def __init__(self, parent=None):
 		super(AMWidget, self).__init__(parent=parent)
 
@@ -765,15 +772,20 @@ def get_cfile_list(path):
 	filenames = sorted(filenames, key=lambda s: int(s.split('_')[1]))
 	return filenames
 
-def translate_burst(burst, new_frequency, start, stop):
+def translate_burst(burst, new_frequency_shift, start, stop):
 	if burst is None:
 		return None
 
 	if start is not None and stop is not None and start > stop:
 		return None
 
-	mix = numpy.arange(burst.sample_count, dtype=numpy.float32) * 2.0j * numpy.pi * new_frequency / burst.sampling_rate
+	mix = numpy.arange(burst.sample_count, dtype=numpy.float32) * 2.0j * numpy.pi * new_frequency_shift / burst.sampling_rate
 	mix = numpy.exp(mix) * burst.samples
+	mix = mix[start:stop]
+
+	if len(mix) == 0:
+		return None
+
 	return TimeData(mix[start:stop], burst.sampling_rate)
 
 class Slider(QtGui.QWidget):
@@ -958,25 +970,25 @@ class FSKData(QtCore.QObject):
 
 class Burst(QtCore.QObject):
 	symbol_rate_changed = QtCore.Signal(float)
-	center_frequency_changed = QtCore.Signal(float)
+	frequency_shift_changed = QtCore.Signal(float)
 	modulation_changed = QtCore.Signal(str)
+	start_changed = QtCore.Signal(int)
+	stop_changed = QtCore.Signal(int)
 
 	raw_changed = QtCore.Signal(object)
 	translated_changed = QtCore.Signal(object)
 	filtered_changed = QtCore.Signal(object)
-	start_changed = QtCore.Signal(object)
-	stop_changed = QtCore.Signal(object)
 
 	def __init__(self):
 		super(Burst, self).__init__()
 		self._symbol_rate = 19200
-		self._center_frequency = 0
+		self._frequency_shift = 0
+		self._start = 0
+		self._stop = 0
 		self._modulation = 'fsk'
 		self._raw = None
 		self._translated = None
 		self._filtered = None
-		self._start = None
-		self._stop = None
 
 	@property
 	def symbol_rate(self):
@@ -988,13 +1000,13 @@ class Burst(QtCore.QObject):
 		self.symbol_rate_changed.emit(self._symbol_rate)
 
 	@property
-	def center_frequency(self):
-		return self._center_frequency
+	def frequency_shift(self):
+		return self._frequency_shift
 
-	@center_frequency.setter
-	def center_frequency(self, new_value):
-		self._center_frequency = new_value
-		self.center_frequency_changed.emit(self._center_frequency)
+	@frequency_shift.setter
+	def frequency_shift(self, new_value):
+		self._frequency_shift = new_value
+		self.frequency_shift_changed.emit(self._frequency_shift)
 
 	@property
 	def modulation(self):
@@ -1142,7 +1154,7 @@ class FSKWidget(QtGui.QWidget):
 
 		self.eye_view = EyeWidget(self)
 
-		self.deviation_slider = Slider("Deviation", 5e3, 50e3, 100, self.modulation.deviation, self)
+		self.deviation_slider = Slider("Deviation", 1e3, 50e3, 100, self.modulation.deviation, self)
 		self.deviation_slider.value_changed[float].connect(self.deviation_slider_changed)
 
 		self.views_layout = QtGui.QGridLayout()
@@ -1198,7 +1210,10 @@ class Browser(QtGui.QWidget):
 		self.burst = Burst()
 		self.burst.symbol_rate_changed[float].connect(self.symbol_rate_changed)
 		self.burst.raw_changed[object].connect(self.raw_changed)
+		self.burst.frequency_shift_changed[float].connect(self.frequency_shift_changed)
 		self.burst.filtered_changed[object].connect(self.filtered_changed)
+		self.burst.start_changed[int].connect(self.start_changed)
+		self.burst.stop_changed[int].connect(self.stop_changed)
 
 		self.file_path = None
 
@@ -1219,13 +1234,11 @@ class Browser(QtGui.QWidget):
 		self.splitter.setStretchFactor(1, 1)
 
 		self.am_view = AMWidget(self)
-		self.am_view.range_changed.connect(self.range_changed)
-
 		self.fm_view = FMWidget(self)
 
 		self.spectrum_view = SpectrumView()
-		self.spectrum_view.translation_frequency_changing.connect(self.translation_frequency_changing)
-		self.spectrum_view.translation_frequency_changed.connect(self.translation_frequency_changed)
+		self.spectrum_view.translation_frequency_changing.connect(self.spectrum_view_changed)
+		self.spectrum_view.translation_frequency_changed.connect(self.spectrum_view_changed)
 
 		self.modulation_tabs = QtGui.QTabWidget()
 		self.modulation_tabs.currentChanged[int].connect(self.modulation_tab_changed)
@@ -1235,19 +1248,19 @@ class Browser(QtGui.QWidget):
 		self.modulation_tabs.addTab(self.tab_fsk, "FSK")
 		self.modulation_tabs.setCurrentWidget(self.tab_fsk)
 
-		self.burst_start_slider = Slider("Burst Start", 0, 1e3, 1, 0.0, self)
+		self.burst_start_slider = Slider("Burst Start", 0, 1e3, 1e2, self.burst.start, self)
 		self.burst_start_slider.value_changed[float].connect(self.start_slider_changed)
-		self.burst_stop_slider = Slider("Burst Stop", 0, 1e3, 1, 0.0, self)
+		self.burst_stop_slider = Slider("Burst Stop", 0, 1e3, 1e2, self.burst.stop, self)
 		self.burst_stop_slider.value_changed[float].connect(self.stop_slider_changed)
 
-		self.translation_frequency_slider = Slider("F Shift", -200e3, 200e3, 1e3, self.burst.center_frequency, self)
-		self.translation_frequency_slider.value_changed[float].connect(self.translation_frequency_slider_changed)
+		self.frequency_shift_slider = Slider("F Shift", -200e3, 200e3, 1e3, self.burst.frequency_shift, self)
+		self.frequency_shift_slider.value_changed[float].connect(self.frequency_shift_slider_changed)
 
 		self.symbol_rate_slider = Slider("Symbol Rate", 5e3, 25e3, 10, self.burst.symbol_rate, self)
 		self.symbol_rate_slider.value_changed[float].connect(self.symbol_rate_slider_changed)
 
-		self.levels = RadioOptions("Levels", [(2, "2"), (4, "4")], 2, self)
-		self.levels.value_changed[int].connect(lambda x: x)
+		self.levels_options = RadioOptions("Levels", [(2, "2"), (4, "4")], 2, self)
+		self.levels_options.value_changed[int].connect(self.levels_options_changed)
 
 		self.slicer_view = SlicerWidget(self)
 		self.sliced_view = SlicerWidget(self)
@@ -1263,10 +1276,10 @@ class Browser(QtGui.QWidget):
 		self.views_layout.addWidget(self.burst_start_slider, 2, 0)
 		self.views_layout.addWidget(self.burst_stop_slider, 3, 0)
 		self.views_layout.addWidget(self.spectrum_view, 4, 0)
-		self.views_layout.addWidget(self.translation_frequency_slider, 5, 0)
+		self.views_layout.addWidget(self.frequency_shift_slider, 5, 0)
 		self.views_layout.addWidget(self.modulation_tabs, 6, 0)
 		self.views_layout.addWidget(self.symbol_rate_slider, 7, 0)
-		self.views_layout.addWidget(self.levels, 8, 0)
+		self.views_layout.addWidget(self.levels_options, 8, 0)
 		self.views_layout.addWidget(self.slicer_view, 9, 0)
 		self.views_layout.addWidget(self.sliced_view, 10, 0)
 		self.views_layout.setRowStretch(0, 0)
@@ -1304,15 +1317,8 @@ class Browser(QtGui.QWidget):
 	def symbol_rate_slider_changed(self, value):
 		self.burst.symbol_rate = value
 
-	def range_changed(self, start_time, end_time):
-		print('%f %f' % (start_time, end_time))
-		start_sample = int(start_time * self.burst.raw.sampling_rate)
-		end_sample = int(end_time * self.burst.raw.sampling_rate)
-		self.burst.translated = TimeData(self.burst.raw.samples[start_sample:end_sample], self.burst.raw.sampling_rate)
-		self.spectrum_view.burst = self.burst.translated
-
 	def shift_translation_frequency(self, frequency_shift):
-		new_frequency = self.burst.center_frequency + frequency_shift
+		new_frequency = self.burst.frequency_shift + frequency_shift
 		sampling_rate = self.burst.raw.sampling_rate
 		nyquist_frequency = sampling_rate / 2.0
 		while new_frequency < -nyquist_frequency:
@@ -1321,51 +1327,56 @@ class Browser(QtGui.QWidget):
 			new_frequency -= sampling_rate
 		return new_frequency
 
-	def translation_frequency_changing(self, frequency_shift):
-		new_frequency = self.shift_translation_frequency(frequency_shift)
-		self.burst.translated = translate_burst(self.burst.raw, new_frequency, self.burst.start, self.burst.stop)
+	def frequency_shift_slider_changed(self, value):
+		self.burst.frequency_shift = value
+
+	def frequency_shift_changed(self, frequency_shift):
+		self.frequency_shift_slider.value = frequency_shift
+
+		self.burst.translated = translate_burst(self.burst.raw, frequency_shift, self.burst.start, self.burst.stop)
 		self.spectrum_view.burst = self.burst.translated
 
-	def translation_frequency_changed(self, frequency_shift):
-		self.burst.center_frequency = self.shift_translation_frequency(frequency_shift)
-		self.translation_frequency_slider.value = self.burst.center_frequency
-		self._update_translation(self.burst.raw)
+	def spectrum_view_changed(self, value):
+		new_value = self.shift_translation_frequency(value)
+		self.burst.frequency_shift = new_value
 
-	def translation_frequency_slider_changed(self, translation_frequency):
-		self.burst.center_frequency = translation_frequency
+	def start_changed(self, new_value):
+		self.am_view.start = new_value
+		self.fm_view.start = new_value
+		self.burst_start_slider.value = new_value
 		self._update_translation(self.burst.raw)
 
 	def start_slider_changed(self, start_value):
 		self.burst.start = start_value
 
-		self.am_view.start = start_value
-		self.fm_view.start = start_value
-
+	def stop_changed(self, new_value):
+		self.am_view.stop = new_value
+		self.fm_view.stop = new_value
+		self.burst_stop_slider.value = new_value
 		self._update_translation(self.burst.raw)
 
 	def stop_slider_changed(self, stop_value):
 		self.burst.stop = stop_value
 
-		self.am_view.stop = stop_value
-		self.fm_view.stop = stop_value
-
-		self._update_translation(self.burst.raw)
-
 	def raw_changed(self, data):
-		self.am_view.data = self.burst.raw
-
-		self.burst_start_slider.maximum = self.burst.raw.sample_count
-		self.burst_stop_slider.maximum = self.burst.raw.sample_count
+		self.burst_start_slider.maximum = data.sample_count
+		self.burst_stop_slider.maximum = data.sample_count
 
 		self.am_view.data = self.burst.raw
-		self.am_view.start = self.burst_start_slider.value
-		self.am_view.stop = self.burst_stop_slider.value
+		self.am_view.start = self.burst.start
+		self.am_view.stop = self.burst.stop
 
 		self.fm_view.data = self.burst.raw
-		self.fm_view.start = self.burst_start_slider.value
-		self.fm_view.stop = self.burst_stop_slider.value
+		self.fm_view.start = self.burst.start
+		self.fm_view.stop = self.burst.stop
 
 		self._update_translation(data)
+
+	def levels_changed(self, value):
+		pass
+
+	def levels_options_changed(self, new_value):
+		pass
 
 	def filtered_changed(self, data):
 		self._update_sliced(data)
@@ -1392,16 +1403,17 @@ class Browser(QtGui.QWidget):
 				'modulation': {
 					'type': self.burst.modulation,
 				},
-				'center_frequency': self.burst.center_frequency,
+				'frequency_shift': self.burst.frequency_shift,
+				'start': self.burst.start,
+				'stop': self.burst.stop
 			}
 			if self.burst.modulation == 'ask':
 				data['modulation']['channel_bandwidth'] = self.tab_ask.modulation.channel_bandwidth
 			if self.burst.modulation == 'fsk':
 				data['modulation']['deviation'] = self.tab_fsk.modulation.deviation
-			data_yaml = yaml.dump(data)
-			f_yaml = open(self.metadata_filename, 'w')
-			f_yaml.write(data_yaml)
-			f_yaml.close()
+
+			with open(self.metadata_filename, 'w') as fp:
+				fp.write(yaml.dump(data))
 
 	def set_file(self, file_path):
 		if self.metadata_filename:
@@ -1409,11 +1421,20 @@ class Browser(QtGui.QWidget):
 
 		self.file_path = file_path
 
+		# The data is loaded first, since start/stop depends on the number of
+		# samples.
+		data = numpy.fromfile(file_path, dtype=numpy.complex64)
+		self.burst.raw = TimeData(data, sampling_rate=400e3)
+
 		if os.path.exists(self.metadata_filename):
-			f_yaml = open(self.metadata_filename, 'r')
-			metadata = yaml.load(f_yaml)
+			with open(self.metadata_filename, 'r') as fp:
+				metadata = yaml.load(fp)
+
+			self.burst.start = metadata['start']
+			self.burst.stop = metadata['stop']
 			self.burst.symbol_rate = metadata['symbol_rate']
-			self.burst.center_frequency = metadata['center_frequency']
+			self.burst.frequency_shift = metadata['frequency_shift']
+
 			if 'modulation' in metadata:
 				modulation = metadata['modulation']
 				if modulation['type'] == 'ask':
@@ -1423,10 +1444,6 @@ class Browser(QtGui.QWidget):
 					self.tab_fsk.modulation.deviation = modulation['deviation']
 					self.modulation_tabs.setCurrentWidget(self.tab_fsk)
 
-		data = numpy.fromfile(file_path, dtype=numpy.complex64)
-		sampling_rate = 400e3
-		self.burst.raw = TimeData(data, sampling_rate)
-
 	def delete_file(self, file_path):
 		file_base, file_ext = os.path.splitext(file_path)
 		file_glob = '%s%s' % (file_base, '.*')
@@ -1434,7 +1451,7 @@ class Browser(QtGui.QWidget):
 			os.remove(matched_file_path)
 
 	def _update_translation(self, raw_data):
-		self.burst.translated = translate_burst(raw_data, self.burst.center_frequency, self.burst.start, self.burst.stop)
+		self.burst.translated = translate_burst(raw_data, self.burst.frequency_shift, self.burst.start, self.burst.stop)
 		self.spectrum_view.burst = self.burst.translated
 
 	def _update_sliced(self, filtered_symbols):
