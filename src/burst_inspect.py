@@ -596,15 +596,15 @@ class EyeWidget(QtGui.QWidget):
 
 		self._data = None
 
-	def get_data(self):
+	@property
+	def data(self):
 		return self._data
 
-	def set_data(self, data):
+	@data.setter
+	def data(self, data):
 		self._data = data
 		self.eye_view.data_1 = data[0]
 		self.eye_view.data_2 = data[1]
-
-	data = property(get_data, set_data)
 
 	def sizeHint(self):
 		return QtCore.QSize(50, 50)
@@ -631,13 +631,14 @@ class SlicerWidget(QtGui.QWidget):
 		self.slicer_view = SlicerView(self)
 		self._data = None
 
-	def get_data(self):
+	@property
+	def data(self):
 		return self._data
 
-	def set_data(self, data):
+	@data.setter
+	def data(self, data):
 		self._data = data
 		self.slicer_view.data = data
-	data = property(get_data, set_data)
 
 	def sizeHint(self):
 		return QtCore.QSize(50, 50)
@@ -969,6 +970,7 @@ class FSKData(QtCore.QObject):
 		self.deviation_changed.emit(self._deviation)
 
 class Burst(QtCore.QObject):
+
 	symbol_rate_changed = QtCore.Signal(float)
 	frequency_shift_changed = QtCore.Signal(float)
 	modulation_changed = QtCore.Signal(str)
