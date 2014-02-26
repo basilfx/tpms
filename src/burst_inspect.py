@@ -614,6 +614,20 @@ class EyeWidget(QtGui.QWidget):
 		self.eye_view.resize(event.size())
 
 class SlicerView(WaveformView):
+	def __init__(self, parent=None):
+		super(SlicerView, self).__init__(parent)
+
+		self._margin = 1.0
+
+	@property
+	def margin(self):
+		return self._margin
+
+	@margin.setter
+	def margin(self, new_value):
+		self._margin = new_value
+		self._scale_changed()
+
 	def _data_changed(self):
 		if self.data is not None:
 			self.setSceneRect(0, -self.data.abs_max, self.data.duration, 2.0 * self.data.abs_max)
@@ -622,7 +636,7 @@ class SlicerView(WaveformView):
 	def _scale_changed(self):
 		if self.data is not None:
 			new_size = self.size()
-			self.scale(float(self.width()) / self.data.duration, self.height() / -(2.0 * self.data.abs_max))
+			self.scale(float(self.width()) / self.data.duration, self.height() / -(2.0 * self.data.abs_max) / self.margin)
 			self.translate(0.0, self.height())
 
 class SlicerWidget(QtGui.QWidget):
@@ -669,6 +683,14 @@ class SlicerWidget(QtGui.QWidget):
 #       return (shift, abs(argsort_hz(argsort_peak2_n) - argsort_hz(argsort_peak1_n)))
 #   else:
 #       return (0.0, None)
+
+class SlicedWidget(SlicerWidget):
+	def __init__(self, parent=None):
+		super(SlicedWidget, self).__init__(parent=parent)
+
+		# This adds some margin between borders and the levels, so you can
+		# track the bits better.
+		self.slicer_view.margin = 1.2
 
 class SpectrumView(QtGui.QWidget):
 	translation_frequency_changing = QtCore.Signal(float)
